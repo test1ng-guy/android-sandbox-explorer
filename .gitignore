@@ -1,0 +1,48 @@
+# Temporary files
+*.tmp
+*.temp
+*.log
+.DS_Store
+
+# APK files and build artifacts
+*.apk
+*.idsig
+unsigned.apk
+injected-app.apk
+
+# Extracted APK contents
+extracted/
+injected-app/
+temp_check/
+prefs.xml/
+shared_prefs/
+
+# Android NDK
+android-ndk-r26d/
+
+# Specific directories
+temp/
+
+# Keystore (contains sensitive data)
+custom.keystore
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+
+# Build outputs
+build/
+dist/
+
+# Go build artifacts
+server
