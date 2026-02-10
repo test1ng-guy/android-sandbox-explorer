@@ -8,6 +8,46 @@ import sys
 import glob
 
 
+def find_android_build_tools():
+    """Auto-detect Android SDK build-tools and return the path to the latest version."""
+    sdk_candidates = []
+
+    # macOS
+    home = os.path.expanduser("~")
+    sdk_candidates.append(os.path.join(home, "Library", "Android", "sdk"))
+    # Linux
+    sdk_candidates.append(os.path.join(home, "Android", "Sdk"))
+    # ANDROID_HOME / ANDROID_SDK_ROOT env
+    for env_var in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        val = os.environ.get(env_var)
+        if val:
+            sdk_candidates.insert(0, val)
+
+    for sdk_path in sdk_candidates:
+        bt_dir = os.path.join(sdk_path, "build-tools")
+        if os.path.isdir(bt_dir):
+            versions = sorted(
+                [v for v in os.listdir(bt_dir) if os.path.isdir(os.path.join(bt_dir, v))],
+                reverse=True,
+            )
+            for ver in versions:
+                candidate = os.path.join(bt_dir, ver)
+                if os.path.isfile(os.path.join(candidate, "apksigner")) and \
+                   os.path.isfile(os.path.join(candidate, "lib", "apksigner.jar")):
+                    return candidate
+    return None
+
+
+def setup_build_tools_path():
+    """Prepend Android SDK build-tools to PATH so apksigner/zipalign are found correctly."""
+    bt = find_android_build_tools()
+    if bt:
+        os.environ["PATH"] = bt + os.pathsep + os.environ.get("PATH", "")
+        print(f"🔧 Using Android build-tools: {bt}")
+    else:
+        print("⚠️  Android SDK build-tools not found, relying on PATH")
+
+
 def detect_split_apk(apk_path):
     """Detect if the input is a split APK (directory with base.apk + split_*.apk)"""
     if os.path.isdir(apk_path):
@@ -143,6 +183,9 @@ def main():
     parser.add_argument("--alias", default="alias", help="Keystore alias (default: alias)")
     parser.add_argument("--additional-apks", nargs='*', help="Additional APK files to sign with the same keystore")
     args = parser.parse_args()
+
+    # Ensure SDK build-tools are on PATH (fixes apksigner.jar not found on macOS)
+    setup_build_tools_path()
 
     current_dir = os.getcwd()
     keystore = os.path.join(os.path.dirname(os.path.abspath(__file__)), "custom.keystore")
