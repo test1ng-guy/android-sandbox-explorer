@@ -8,23 +8,23 @@
 *.apk
 *.idsig
 unsigned.apk
-injected-app.apk
 
 # Extracted APK contents
 extracted/
-injected-app/
 temp_check/
-prefs.xml/
-shared_prefs/
+temp_decompile/
+temp_apk_repack/
+injected_*/
 
 # Android NDK
 android-ndk-r26d/
 
-# Specific directories
-temp/
+# Cached app data
+1/
 
 # Keystore (contains sensitive data)
 custom.keystore
+temp.keystore
 
 # Python cache
 __pycache__/
@@ -43,6 +43,17 @@ Thumbs.db
 # Build outputs
 build/
 dist/
+
+# ADB binary
+adb
+
+# Docker files (not needed for local usage)
+Dockerfile
+docker-compose.yml
+
+# Wrapper scripts (Docker-oriented)
+android_sandbox_explorer.py
+cli_injector.py
 
 # Go build artifacts
 server

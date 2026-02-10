@@ -1,171 +1,156 @@
-# Android APK Injection Tool for Non-Root Devices
+# Android Sandbox Explorer
 
-This project provides a complete solution for injecting a custom native library (.so) into Android apps on non-root devices. The injected library runs a TCP server on port 50052, allowing remote shell-like commands and file operations within the app's sandbox.
+A universal tool for injecting a native library into any Android APK (single or split) on non-root devices. The injected library runs a TCP server inside the app's sandbox, enabling remote file system exploration via simple shell-like commands.
 
 ## Features
 
+- Works with **single APK** and **split APK** (base + split\_config.\*)
+- Auto-detects architecture (arm64-v8a, armeabi-v7a, etc.)
+- Auto-detects Application class and `onCreate` method (any modifiers)
+- Multi-dex support (smali\_classes2..N)
 - TCP server on port 50052 for remote command execution
-- Shell-like commands: `ls`, `cd`, `cp` for file system navigation and copying
-- Recursive file/directory upload/download
-- Works within app sandbox on non-root Android devices
-- Automatic APK decompilation, injection, and repackaging
-- Support for multiple architectures (arm64-v8a, armeabi-v7a)
+- Commands: `ls`, `cd`, `cp` (upload / download, recursive)
+- Adds INTERNET + storage permissions automatically
+- APK Signature Scheme v2 signing (apksigner)
 
 ## Prerequisites
 
-- Linux/macOS with Python 3
-- Android SDK with `apktool` installed: `brew install apktool` (macOS) or `apt install apktool` (Ubuntu)
-- Android NDK for cross-compilation (included in `android-ndk-r26d/`)
-- Java JDK for APK signing
-- Android device connected via USB (for testing)
+- Python 3
+- [apktool](https://apktool.org/) — `brew install apktool` (macOS) / `apt install apktool` (Linux)
+- Android SDK Build Tools (`zipalign`, `apksigner`) — from Android Studio or standalone SDK
+- Java JDK (for APK signing)
+- ADB + Android device with USB debugging enabled
 
-## Building the Implant
+## Quick Start
 
-The implant is a native C library that gets injected into the APK:
+### 1. Build the implant (optional — pre-compiled `libimplant.so` included)
 
 ```bash
-# Compile the implant for Android
-# The project includes pre-compiled libimplant.so
-# To recompile, use Android NDK:
+# Using Android NDK:
 $ANDROID_NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang \
-  -shared -fPIC implant.c -o libimplant.so
+  -shared -fPIC -o libimplant.so implant.c -llog
 ```
 
-## Injecting into APK
+### 2. Inject into APK
 
-Use the provided Python script to inject the implant into any APK:
-
+**Single APK:**
 ```bash
-python3 repack.py <apk_path> <so_path> [output_apk] [--storepass password] [--alias alias]
+python3 repack.py app.apk libimplant.so injected.apk
 ```
 
-### Example
-
+**Split APK (directory with base.apk + split\_\*.apk):**
 ```bash
-# Inject implant into an APK
-python3 repack.py target.apk libimplant.so injected.apk
-
-# The script will:
-# - Decompile the APK using apktool
-# - Copy libimplant.so to lib/arm64-v8a/ (or detected architecture)
-# - Modify AndroidManifest.xml to add INTERNET permission
-# - Rebuild and sign the APK
+python3 repack.py /path/to/split_dir/ libimplant.so output.apk
+# Output → output_split/ directory with all signed splits
 ```
 
-## Installing on Device
+The script will automatically:
+- Decompile the APK with apktool
+- Inject `System.loadLibrary("implant")` into Application.onCreate()
+- Add the .so to the correct architecture directory
+- Add INTERNET and storage permissions
+- Rebuild, align (zipalign), and sign (apksigner v2)
 
-Install the injected APK using ADB:
+### 3. Install on device
 
 ```bash
-# Install the patched APK
+# Single APK
 adb install injected.apk
 
-# Grant permissions if needed
-adb shell pm grant <package_name> android.permission.READ_EXTERNAL_STORAGE
-adb shell pm grant <package_name> android.permission.WRITE_EXTERNAL_STORAGE
+# Split APK
+adb install-multiple output_split/*.apk
 ```
 
-## Connecting and Usage
-
-1. Launch the patched app on your Android device
-2. Forward the port via ADB:
+### 4. Connect to the implant
 
 ```bash
+# Launch the app on device, then:
 adb forward tcp:50052 tcp:50052
-```
-
-3. In another terminal, connect using the Python client:
-
-```bash
 python3 implant_client.py
 ```
 
-### Available Commands
+### Available commands
 
-- `ls [path]` - List directory contents
-- `cd <path>` - Change current directory
-- `cp <src> <dst> <upload|download>` - Copy files between device and host
-- `exit` - Close connection
+| Command | Description |
+|---|---|
+| `ls [path]` | List directory contents |
+| `cd <path>` | Change directory |
+| `cp <src> <dst> download` | Download file/directory from device |
+| `cp <src> <dst> upload` | Upload file to device |
+| `exit` | Close connection |
 
-### Examples
+### Usage examples
 
 ```bash
-# Connect to implant
-python3 implant_client.py
+> ls /data/data/com.example.app
+cache
+files
+shared_prefs
+databases
 
-# List root directory
-> ls /
-
-# Change to app data directory
 > cd /data/data/com.example.app
 
-# List app data directory
-> ls
-
-# Download a file from device
 > cp /data/data/com.example.app/shared_prefs/prefs.xml ./prefs.xml download
+Downloaded file 1234 bytes to ./prefs.xml
 
-# Upload a file to device
-> cp ./local_file.txt /data/data/com.example.app/local_file.txt upload
-
-# Download entire directory recursively
-> cp /data/data/com.example.app/Documents ./downloads download
+> cp ./payload.txt /data/data/com.example.app/files/payload.txt upload
+OK
 ```
 
-## Architecture
+## Project Structure
 
-- `repack.py` - APK injection script that decompiles, modifies, and repackages APKs
-- `implant.c` - Native C library with TCP server for command execution
-- `implant_client.py` - Python client for remote shell access
-- `libimplant.so` - Compiled native library for Android
-- `android-ndk-r26d/` - Android NDK for cross-compilation
+| File | Description |
+|---|---|
+| `implant.c` | Native C library — TCP server, runs inside the app sandbox |
+| `libimplant.so` | Pre-compiled implant (arm64-v8a) |
+| `repack.py` | APK injection script (decompile → patch → rebuild → sign) |
+| `implant_client.py` | Python TCP client for connecting to the implant |
+| `cli_injector.py` | Simplified CLI wrapper around repack.py |
+| `android_sandbox_explorer.py` | Interactive TUI with menu system |
 
-## Security Notes
+## repack.py Parameters
 
-- This tool is for testing and development purposes only
-- Respect app store policies and legal requirements
-- The injected code runs with the app's sandbox permissions
-- Network traffic is forwarded via ADB (secure local connection)
+```
+python3 repack.py <apk_path> <so_path> <output> [--storepass PASS] [--alias ALIAS]
+```
+
+| Parameter | Default | Description |
+|---|---|---|
+| `apk_path` | — | APK file or directory with split APKs |
+| `so_path` | — | Path to the .so library to inject |
+| `output` | — | Output APK path (or base name for split output dir) |
+| `--storepass` | `password` | Keystore password |
+| `--alias` | `alias` | Key alias in the keystore |
 
 ## Troubleshooting
 
-### Implant Not Loading
-
-- Check device logs: `adb logcat | grep Implant`
-- Look for "JNI_OnLoad called" and "Server listening" messages
-- Ensure the APK is properly signed and installed
-- Verify architecture compatibility (arm64-v8a vs armeabi-v7a)
-
-### Connection Refused
-
-- Verify app is running on device: `adb shell ps | grep <package_name>`
-- Check port forwarding: `adb forward --list`
-- Ensure port 50052 is not blocked
-
-### File Access Issues
-
-- Check app permissions in AndroidManifest.xml
-- Verify file paths exist and are accessible
-- Some directories require special permissions
-
-### Injection Fails
-
-- Ensure apktool is installed and working
-- Check that input APK is valid and not corrupted
-- Verify keystore exists and passwords are correct
-
-## Building from Source
-
+**Implant not loading:**
 ```bash
-# Clone the repository
-git clone <repository_url>
-cd android-implant
-
-# The project is ready to use - all components included
-# To recompile the implant:
-# Use Android NDK to compile implant.c for target architecture
+adb logcat -s Implant
+# Should see: "JNI_OnLoad called", "Server listening"
 ```
+
+**Connection refused:**
+```bash
+adb forward --list          # Check port forwarding
+adb shell ps | grep <pkg>   # Check app is running
+```
+
+**Installation fails (INSTALL\_PARSE\_FAILED\_NO\_CERTIFICATES):**
+- Make sure `apksigner` from Android SDK build-tools is in PATH (not a broken wrapper)
+- All split APKs must be signed with the same key
+
+**Injection fails:**
+- Verify `apktool` is installed and up to date
+- Check that `custom.keystore` exists next to `repack.py`
+
+## Security Notes
+
+- This tool is intended for security research and testing only
+- The injected code runs within the app's sandbox permissions
+- Network traffic is forwarded via ADB (local connection only — binds to localhost)
+- Respect applicable laws and app store policies
 
 ## License
 
-This project is for educational and research purposes only.
+For educational and research purposes only.

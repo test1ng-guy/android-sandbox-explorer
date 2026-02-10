@@ -1,9 +1,34 @@
 import socket
 import sys
+import os
+
+def is_running_in_docker():
+    """Detect if running inside Docker container"""
+    if os.path.exists('/.dockerenv'):
+        return True
+    try:
+        with open('/proc/1/cgroup', 'r') as f:
+            return 'docker' in f.read()
+    except:
+        return False
+
+def normalize_local_path(path):
+    """Normalize local path for Docker environment"""
+    if is_running_in_docker():
+        # In Docker, convert relative paths to /workspace paths
+        if path.startswith('./'):
+            path = '/workspace/' + path[2:]
+        elif path.startswith('.'):
+            path = '/workspace/' + path[1:]
+        elif not path.startswith('/'):
+            path = '/workspace/' + path
+    return path
 
 def copy_directory(sock, remote_dir, local_dir, direction):
     """Recursively copy directory"""
     import os
+    # Normalize path for Docker
+    local_dir = normalize_local_path(local_dir)
     os.makedirs(local_dir, exist_ok=True)
     
     # Get directory listing
@@ -26,7 +51,7 @@ def copy_directory(sock, remote_dir, local_dir, direction):
     
     for item in items:
         item = item.strip()
-        if not item or item in ['.', '..', 'files', 'app_webview', 'shared_prefs', 'lib', 'app_textures', 'code_cache', 'databases', 'cache', 'no_backup']:
+        if not item or item in ['.', '..']:
             continue
         
         remote_path = f"{remote_dir}/{item}"
@@ -60,7 +85,13 @@ def copy_directory(sock, remote_dir, local_dir, direction):
                 print(f"Error copying {remote_path}: {e}")
 
 def main():
-    host = 'localhost'
+    # Auto-detect if running in Docker and use appropriate host
+    if is_running_in_docker():
+        host = 'host.docker.internal'
+        print("🐳 Running in Docker - connecting to host.docker.internal")
+    else:
+        host = 'localhost'
+    
     port = 50052
 
     try:
@@ -116,11 +147,18 @@ def main():
                 src = parts[1]
                 dst = parts[2]
                 direction = parts[3]
+                
+                # Normalize local path for Docker
+                if direction == "download":
+                    dst = normalize_local_path(dst)
+                elif direction == "upload":
+                    src = normalize_local_path(src)
+                
                 if direction not in ["upload", "download"]:
                     print("Direction must be 'upload' or 'download'")
                     continue
                 
-                # Сначала попробуем как файл
+                # Try as a file first
                 sock.sendall(f"cp {src} {dst} {direction}\n".encode())
                 if direction == "upload":
                     # Send file to implant
@@ -150,7 +188,7 @@ def main():
                                 f.write(data)
                             print(f"Downloaded file {size} bytes to {dst}")
                         else:
-                            # Возможно, это директория, попробуем скопировать все файлы из неё
+                            # Possibly a directory, try to copy all files from it
                             print(f"{src} appears to be a directory, copying all files from it...")
                             copy_directory(sock, src, dst, direction)
                     except Exception as e:
