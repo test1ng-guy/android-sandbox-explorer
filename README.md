@@ -105,8 +105,6 @@ OK
 | `libimplant.so` | Pre-compiled implant (arm64-v8a) |
 | `repack.py` | APK injection script (decompile → patch → rebuild → sign) |
 | `implant_client.py` | Python TCP client for connecting to the implant |
-| `cli_injector.py` | Simplified CLI wrapper around repack.py |
-| `android_sandbox_explorer.py` | Interactive TUI with menu system |
 
 ## repack.py Parameters
 
